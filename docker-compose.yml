@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: webhook-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: webhooks
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d webhooks"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: webhook-backend
+    restart: always
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/webhooks
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["node", "dist/main"]
+
+  worker-1:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: webhook-worker-1
+    restart: always
+    environment:
+      WORKER_ID: worker-node-1
+      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/webhooks
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["node", "dist/worker"]
+
+  worker-2:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: webhook-worker-2
+    restart: always
+    environment:
+      WORKER_ID: worker-node-2
+      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/webhooks
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["node", "dist/worker"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+    container_name: webhook-frontend
+    restart: always
+    environment:
+      PORT: 3001
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
